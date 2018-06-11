@@ -1,5 +1,5 @@
 {
-  "name": "@celio.latorraca/swifft",
+  "name": "swifft",
   "version": "1.4.0",
   "description": "An OpenStack Swift Client",
   "main": "dist/index.js",
