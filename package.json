@@ -6,6 +6,7 @@
   "scripts": {
     "prepublish": "npm run compile",
     "compile": "babel --optional runtime --out-dir dist index.js lib/*.js bin/*.js",
+    "watch": "babel --watch --optional runtime --out-dir dist index.js lib/*.js bin/*.js",
     "test": "npm run compile && babel-node test/harness.js test/*-test.js",
     "cover": "npm run compile && babel-node node_modules/.bin/istanbul cover test/harness.js test/*-test.js"
   },

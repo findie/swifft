@@ -46,6 +46,10 @@ var SwifftAccount = (function () {
         this.tenant_name = tenant_name;
         this.region = region;
         this.endpoint_type = endpoint_type;
+        if (["admin", "public", "internal"].indexOf(this.endpoint_type) === -1) {
+            console.trace("deprecated endpoint type " + endpoint_type + "! defaulting to \"admin\"");
+            this.endpoint_type = "admin";
+        }
 
         this.storage_url = {};
         this.id = undefined;
@@ -119,19 +123,23 @@ var SwifftAccount = (function () {
                     var opts = {
                         method: "POST",
                         json: true,
-                        uri: _core.Object.assign({}, _this.auth_url, { pathname: "/v2.0/tokens" }),
+                        uri: _core.Object.assign({}, _this.auth_url, { pathname: "/v3/auth/tokens" }),
                         headers: {
                             "Content-Type": "application/json"
                         },
                         payload: JSON.stringify({
                             auth: {
-                                tenantName: _this.tenant_name,
-                                tenantId: _this.tenant_id,
-                                passwordCredentials: {
-                                    username: username,
-                                    password: password
-                                }
-                            }
+                                identity: {
+                                    methods: ["password"],
+                                    password: {
+                                        user: {
+                                            name: username,
+                                            password: password,
+                                            domain: {
+                                                name: "Default"
+                                            } }
+                                    }
+                                } }
                         })
                     };
 
@@ -142,12 +150,19 @@ var SwifftAccount = (function () {
                             return;
                         }
 
-                        var _payload$access = payload.access;
-                        var token = _payload$access.token;
-                        var _payload$access$serviceCatalog = _payload$access.serviceCatalog;
-                        var serviceCatalog = _payload$access$serviceCatalog === undefined ? [] : _payload$access$serviceCatalog;
+                        var _payload$token = payload.token;
+                        var serviceCatalog = _payload$token.catalog;
+                        var project = _payload$token.project;
+                        var issued_at = _payload$token.issued_at;
+                        var expires_at = _payload$token.expires_at;
 
-                        _this.id = "KEY_" + token.tenant.id;
+                        var token = {
+                            id: res.headers["x-subject-token"],
+                            issued_at: issued_at,
+                            expires: expires_at
+                        };
+
+                        _this.id = "KEY_" + project.id;
 
                         // Reauthenticate 5 minutes prior to expiry. Hopefully this will take into
                         // account any differences in clocks, etc. Not my fav, but it should do.
@@ -178,23 +193,10 @@ var SwifftAccount = (function () {
                                             var endpoint = _step2.value;
 
                                             if (endpoint.region && _this.region && endpoint.region.toLowerCase() === _this.region.toLowerCase()) {
-                                                switch (_this.endpoint_type) {
-                                                    case "adminURL":
-                                                        _this.storage_url = Url.parse(endpoint.adminURL);
-                                                        break;
-
-                                                    case "internalURL":
-                                                        _this.storage_url = Url.parse(endpoint.internalURL);
-                                                        break;
-
-                                                    case "publicURL":
-                                                        _this.storage_url = Url.parse(endpoint.publicURL);
-                                                        break;
-
-                                                    default:
-                                                        _this.storage_url = Url.parse(endpoint.publicURL || endpoint.internalURL);
+                                                if (endpoint["interface"] === _this.endpoint_type) {
+                                                    _this.storage_url = Url.parse(endpoint.url);
+                                                    break services;
                                                 }
-                                                break services;
                                             }
                                         }
                                     } catch (err) {
@@ -228,6 +230,15 @@ var SwifftAccount = (function () {
                             }
                         }
 
+                        if (!_this.storage_url.pathname) {
+                            var e = new Error("Cannot find requested endpoint type " + _this.endpoint_type);
+                            e.endpoints = serviceCatalog.find(function (x) {
+                                return x.type === "object-store" && x.name === "swift";
+                            }).endpoints.filter(function (x) {
+                                return x.region && _this.region && x.region.toLowerCase() === _this.region.toLowerCase();
+                            });
+                            return reject(e);
+                        }
                         resolve(token);
                     });
                 });
